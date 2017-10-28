@@ -19,6 +19,7 @@ package com.yahoo.ycsb.db;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
@@ -40,180 +41,199 @@ import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.DB;
 import com.yahoo.ycsb.StringByteIterator;
 import com.yahoo.ycsb.workloads.CoreWorkload;
+import com.yahoo.ycsb.Status;
 
+/**
+ * YCSB binding for <a href="https://github.com/google/leveldb">LevelDB</a>.
+ *
+ * See {@code leveldb/README.md} for details.
+ */
 public class MapKeeperClient extends DB {
-    private static final String HOST = "mapkeeper.host";
-    private static final String HOST_DEFAULT = "localhost";
-    private static final String PORT = "mapkeeper.port";
-    private static final String PORT_DEFAULT = "9090";
-    MapKeeper.Client c; 
-    boolean writeallfields;
-    static boolean initteddb = false;
-    private synchronized static void initDB(Properties p, MapKeeper.Client c) throws TException {
-        if(!initteddb) {
-            initteddb = true;
-            c.addMap(p.getProperty(CoreWorkload.TABLENAME_PROPERTY, CoreWorkload.TABLENAME_PROPERTY_DEFAULT));
-        }
+  public static final String HOST = "mapkeeper.host";
+  public static final String HOST_DEFAULT = "localhost";
+  public static final String PORT = "mapkeeper.port";
+  public static final String PORT_DEFAULT = "9090";
+  private MapKeeper.Client c; 
+  private boolean writeallfields;
+  private static boolean initteddb = false;
+  private static synchronized void initDB(Properties p, MapKeeper.Client c) throws TException {
+    if(!initteddb) {
+      initteddb = true;
+      c.addMap(p.getProperty(CoreWorkload.TABLENAME_PROPERTY, CoreWorkload.TABLENAME_PROPERTY_DEFAULT));
+    }
+  }
+
+  public void init() {
+    String host = getProperties().getProperty(HOST, HOST_DEFAULT);
+    int port = Integer.parseInt(getProperties().getProperty(PORT, PORT_DEFAULT));
+    TTransport tr = new TFramedTransport(new TSocket(host, port));
+    TProtocol proto = new TBinaryProtocol(tr);
+    c = new MapKeeper.Client(proto);
+    try {
+      tr.open();
+      initDB(getProperties(), c);
+    } catch(TException e) {
+      throw new RuntimeException(e);
+    }
+    writeallfields = Boolean.parseBoolean(getProperties().getProperty(CoreWorkload.WRITE_ALL_FIELDS_PROPERTY, 
+                CoreWorkload.WRITE_ALL_FIELDS_PROPERTY_DEFAULT));
+  }
+
+  ByteBuffer encode(Map<String, ByteIterator> values) {
+    int len = 0;
+    for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
+      len += (entry.getKey().length() + 1 + entry.getValue().bytesLeft() + 1);
+    }
+    byte[] array = new byte[len];
+    int i = 0;
+    for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
+      for(int j = 0; j < entry.getKey().length(); j++) {
+        array[i] = (byte)entry.getKey().charAt(j);
+        i++;
+      }
+      array[i] = '\t'; 
+      // XXX would like to use sane delimiter (null, 254, 255, ...) but java makes this nearly impossible
+      i++;
+      ByteIterator v = entry.getValue();
+      i = v.nextBuf(array, i);
+      array[i] = '\t';
+      i++;
+    }
+    array[array.length-1] = 0;
+    ByteBuffer buf = ByteBuffer.wrap(array);
+    buf.rewind();
+    return buf;
+  }
+  void decode(Set<String> fields, String tups, Map<String, ByteIterator> tup) {
+    String[] tok = tups.split("\\t");
+    if (tok.length == 0) { 
+      throw new IllegalStateException("split returned empty array!"); 
     }
 
-    public void init() {
-        String host = getProperties().getProperty(HOST, HOST_DEFAULT);
-        int port = Integer.parseInt(getProperties().getProperty(PORT, PORT_DEFAULT));
-        TTransport tr = new TFramedTransport(new TSocket(host, port));
-        TProtocol proto = new TBinaryProtocol(tr);
-        c = new MapKeeper.Client(proto);
-        try {
-            tr.open();
-            initDB(getProperties(), c);
-        } catch(TException e) {
-            throw new RuntimeException(e);
+    for(int i = 0; i < tok.length; i+=2) {
+      if (fields == null || fields.contains(tok[i])) {
+        if (tok.length < i+2) { 
+          throw new IllegalStateException("Couldn't parse tuple <" + tups + "> at index " + i); 
         }
-        writeallfields = Boolean.parseBoolean(getProperties().getProperty(CoreWorkload.WRITE_ALL_FIELDS_PROPERTY, 
-                    CoreWorkload.WRITE_ALL_FIELDS_PROPERTY_DEFAULT));
+        if (tok[i] == null || tok[i+1] == null) {
+          throw new NullPointerException("Key is " + tok[i] + " val is + " + tok[i+1]);
+        } 
+        tup.put(tok[i], new StringByteIterator(tok[i+1]));
+      }
     }
+    if (tok.length == 0) {
+      System.err.println("Empty tuple: " + tups);
+    }
+  }
 
-    ByteBuffer encode(HashMap<String, ByteIterator> values) {
-        int len = 0;
+  int ycsbThriftRet(BinaryResponse succ, ResponseCode zero, ResponseCode one) {
+    return ycsbThriftRet(succ.responseCode, zero, one);
+  }
+  int ycsbThriftRet(ResponseCode rc, ResponseCode zero, ResponseCode one) {
+    return
+        rc == zero ? 0 :
+        rc == one  ? 1 : 2;
+  }
+  ByteBuffer bufStr(String str) {
+    ByteBuffer buf = ByteBuffer.wrap(str.getBytes());
+    return buf;
+  }
+  String strResponse(BinaryResponse buf) {
+    return new String(buf.value.array());
+  }
+
+  @Override
+  public Status read(String table, String key, Set<String> fields,
+        Map<String, ByteIterator> result) {
+    try {
+      ByteBuffer buf = bufStr(key);
+
+      BinaryResponse succ = c.get(table, buf);
+
+      int ret = ycsbThriftRet(
+              succ,
+              ResponseCode.RecordExists,
+              ResponseCode.RecordNotFound);
+
+      if(ret == 0) {
+        decode(fields, strResponse(succ), result);
+      }
+      return ret == 0 ? Status.OK : Status.ERROR;
+    } catch(TException e) {
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+  @Override
+  public Status scan(String table, String startkey, int recordcount,
+          Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
+    try {
+      //XXX what to pass in for nulls / zeros?
+      RecordListResponse res = c.scan(table, ScanOrder.Ascending, bufStr(startkey), true, null, false, recordcount, 0);
+      int ret = ycsbThriftRet(res.responseCode, ResponseCode.Success, ResponseCode.ScanEnded);
+      if(ret == 0) {
+        for(Record r : res.records) {
+          HashMap<String, ByteIterator> tuple = new HashMap<String, ByteIterator>();
+          // Note: r.getKey() and r.getValue() call special helper methods that trim the buffer
+          // to an appropriate length, and memcpy it to a byte[].  Trying to manipulate the ByteBuffer
+          // directly leads to trouble.
+          tuple.put("key", new StringByteIterator(new String(r.getKey())));
+          decode(fields, new String(r.getValue())/*strBuf(r.bufferForValue())*/, tuple);
+          result.add(tuple);
+        }
+      }
+      return ret == 0 ? Status.OK : Status.ERROR;
+    } catch(TException e) {
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+  @Override
+  public Status update(String table, String key,
+          Map<String, ByteIterator> values) {
+    try {
+      if(!writeallfields) {
+        HashMap<String, ByteIterator> oldval = new HashMap<String, ByteIterator>();
+        read(table, key, null, oldval);
         for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
-            len += (entry.getKey().length() + 1 + entry.getValue().bytesLeft() + 1);
+          oldval.put(entry.getKey(), entry.getValue());
         }
-        byte[] array = new byte[len];
-        int i = 0;
-        for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
-            for(int j = 0; j < entry.getKey().length(); j++) {
-                array[i] = (byte)entry.getKey().charAt(j);
-                i++;
-            }
-            array[i] = '\t'; // XXX would like to use sane delimiter (null, 254, 255, ...) but java makes this nearly impossible
-            i++;
-            ByteIterator v = entry.getValue();
-            i = v.nextBuf(array, i);
-            array[i] = '\t';
-            i++;
-        }
-        array[array.length-1] = 0;
-        ByteBuffer buf = ByteBuffer.wrap(array);
-        buf.rewind();
-        return buf;
+        values = oldval;
+      }
+      ResponseCode succ = c.update(table, bufStr(key), encode(values));
+      int ret = ycsbThriftRet(succ, ResponseCode.RecordExists, ResponseCode.RecordNotFound);
+      return ret == 0 ? Status.OK : Status.ERROR;
+    } catch(TException e) {
+      e.printStackTrace();
+      return Status.ERROR;
     }
-    void decode(Set<String> fields, String tups, HashMap<String, ByteIterator> tup) {
-        String[] tok = tups.split("\\t");
-        if(tok.length == 0) { throw new IllegalStateException("split returned empty array!"); }
-        for(int i = 0; i < tok.length; i+=2) {
-            if(fields == null || fields.contains(tok[i])) {
-                if(tok.length < i+2) { throw new IllegalStateException("Couldn't parse tuple <" + tups + "> at index " + i); }
-                if(tok[i] == null || tok[i+1] == null) throw new NullPointerException("Key is " + tok[i] + " val is + " + tok[i+1]);
-                tup.put(tok[i], new StringByteIterator(tok[i+1]));
-            }
-        }
-        if(tok.length == 0) {
-            System.err.println("Empty tuple: " + tups);
-        }
-    }
+  }
 
-    int ycsbThriftRet(BinaryResponse succ, ResponseCode zero, ResponseCode one) {
-        return ycsbThriftRet(succ.responseCode, zero, one);
+  @Override
+  public Status insert(String table, String key,
+        Map<String, ByteIterator> values) {
+    try {
+      int ret = ycsbThriftRet(c.insert(table, bufStr(key), encode(values)), 
+              ResponseCode.Success, ResponseCode.RecordExists);
+      return ret == 0 ? Status.OK : Status.ERROR;
+    } catch(TException e) {
+      e.printStackTrace();
+      return Status.ERROR;
+      //return 2;
     }
-    int ycsbThriftRet(ResponseCode rc, ResponseCode zero, ResponseCode one) {
-        return
-            rc == zero ? 0 :
-            rc == one  ? 1 : 2;
-    }
-    ByteBuffer bufStr(String str) {
-        ByteBuffer buf = ByteBuffer.wrap(str.getBytes());
-        return buf;
-    }
-    String strResponse(BinaryResponse buf) {
-        return new String(buf.value.array());
-    }
+  }
 
-    @Override
-    public int read(String table, String key, Set<String> fields,
-            Map<String, ByteIterator> result) {
-        try {
-            ByteBuffer buf = bufStr(key);
-
-            BinaryResponse succ = c.get(table, buf);
-
-            int ret = ycsbThriftRet(
-                    succ,
-                    ResponseCode.RecordExists,
-                    ResponseCode.RecordNotFound);
-
-            if(ret == 0) {
-                decode(fields, strResponse(succ), result);
-            }
-            return ret;
-        } catch(TException e) {
-            e.printStackTrace();
-            return 2;
-        }
+  @Override
+  public Status delete(String table, String key) {
+    try {
+      int ret = ycsbThriftRet(c.remove(table, bufStr(key)), ResponseCode.Success, ResponseCode.RecordExists);
+      return ret == 0 ? Status.OK : Status.ERROR;
+    } catch(TException e) {
+      e.printStackTrace();
+      return Status.ERROR;
+      //return 2;
     }
-
-    @Override
-    public int scan(String table, String startkey, int recordcount,
-            Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
-        try {
-            //XXX what to pass in for nulls / zeros?
-            RecordListResponse res = c.scan(table, ScanOrder.Ascending, bufStr(startkey), true, null, false, recordcount, 0);
-            int ret = ycsbThriftRet(res.responseCode, ResponseCode.Success, ResponseCode.ScanEnded);
-            if(ret == 0) {
-                for(Record r : res.records) {
-                    HashMap<String, ByteIterator> tuple = new HashMap<String, ByteIterator>();
-                    // Note: r.getKey() and r.getValue() call special helper methods that trim the buffer
-                    // to an appropriate length, and memcpy it to a byte[].  Trying to manipulate the ByteBuffer
-                    // directly leads to trouble.
-                    tuple.put("key", new StringByteIterator(new String(r.getKey())));
-                    decode(fields, new String(r.getValue())/*strBuf(r.bufferForValue())*/, tuple);
-                    result.add(tuple);
-                }
-            }
-            return ret;
-        } catch(TException e) {
-            e.printStackTrace();
-            return 2;
-        }
-    }
-
-    @Override
-    public int update(String table, String key,
-            Map<String, ByteIterator> values) {
-        try {
-            if(!writeallfields) {
-                HashMap<String, ByteIterator> oldval = new HashMap<String, ByteIterator>();
-                read(table, key, null, oldval);
-                for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
-                    oldval.put(entry.getKey(), entry.getValue()));
-                }
-                values = oldval;
-            }
-            ResponseCode succ = c.update(table, bufStr(key), encode(values));
-            return ycsbThriftRet(succ, ResponseCode.RecordExists, ResponseCode.RecordNotFound);
-        } catch(TException e) {
-            e.printStackTrace();
-            return 2;
-        }
-    }
-
-    @Override
-    public int insert(String table, String key,
-            Map<String, ByteIterator> values) {
-        try {
-            int ret = ycsbThriftRet(c.insert(table, bufStr(key), encode(values)), ResponseCode.Success, ResponseCode.RecordExists);
-            return ret;
-        } catch(TException e) {
-            e.printStackTrace();
-            return 2;
-        }
-    }
-
-    @Override
-    public int delete(String table, String key) {
-        try {
-            return ycsbThriftRet(c.remove(table, bufStr(key)), ResponseCode.Success, ResponseCode.RecordExists);
-        } catch(TException e) {
-            e.printStackTrace();
-            return 2;
-        }
-    }
+  }
 }

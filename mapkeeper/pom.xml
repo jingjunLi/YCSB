@@ -35,6 +35,11 @@ LICENSE file.
        <artifactId>mapkeeper</artifactId>
        <version>${mapkeeper.version}</version>
      </dependency>
+ 	<dependency>
+        <groupId>org.apache.thrift</groupId>
+        <artifactId>libthrift</artifactId>
+        <version>0.8.0</version>
+    </dependency>
      <dependency>
        <groupId>com.yahoo.ycsb</groupId>
        <artifactId>core</artifactId>
