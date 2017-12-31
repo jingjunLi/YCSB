@@ -480,7 +480,12 @@ public class CoreWorkload extends Workload {
       keynum = Utils.hash(keynum);
     }
     String value = Long.toString(keynum);
+    // limit key length 16
+    //if (value.length() > 16) {
+    //  value = value.substring(0, 16);
+    //}
     int fill = zeropadding - value.length();
+    //String prekey = "";   // = "user";  key prefix no "user"
     String prekey = "user";
     for (int i = 0; i < fill; i++) {
       prekey += '0';

@@ -83,7 +83,10 @@ public class MapKeeperClient extends DB {
     int len = 0;
     for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
       len += (entry.getKey().length() + 1 + entry.getValue().bytesLeft() + 1);
+      // System.out.println("Key size: " + entry.getKey().length());
+      // System.out.println("Value size: " + entry.getValue().bytesLeft());
     }
+    //System.out.println("Value size:" + len);
     byte[] array = new byte[len];
     int i = 0;
     for(Map.Entry<String, ByteIterator> entry : values.entrySet()) {
@@ -104,6 +107,7 @@ public class MapKeeperClient extends DB {
     buf.rewind();
     return buf;
   }
+
   void decode(Set<String> fields, String tups, Map<String, ByteIterator> tup) {
     String[] tok = tups.split("\\t");
     if (tok.length == 0) { 
@@ -215,6 +219,7 @@ public class MapKeeperClient extends DB {
   public Status insert(String table, String key,
         Map<String, ByteIterator> values) {
     try {
+      //System.out.println("Key:" + key + "  size:" + key.length());
       int ret = ycsbThriftRet(c.insert(table, bufStr(key), encode(values)), 
               ResponseCode.Success, ResponseCode.RecordExists);
       return ret == 0 ? Status.OK : Status.ERROR;

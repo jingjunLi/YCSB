@@ -94,29 +94,31 @@ LICENSE file.
     <accumulo.1.6.version>1.6.6</accumulo.1.6.version>
     <accumulo.1.7.version>1.7.3</accumulo.1.7.version>
     <accumulo.1.8.version>1.8.1</accumulo.1.8.version>
-    -->
     <cassandra.cql.version>3.0.0</cassandra.cql.version>
-    <geode.version>1.2.0</geode.version>
+    -->
+    <!--<geode.version>1.2.0</geode.version>-->
     <!--<azuredocumentdb.version>1.8.1</azuredocumentdb.version>-->
-    <googlebigtable.version>0.9.7</googlebigtable.version>
+    <!--<googlebigtable.version>0.9.7</googlebigtable.version>-->
     <infinispan.version>7.2.2.Final</infinispan.version>
-    <kudu.version>1.1.0</kudu.version>
+    <!--<kudu.version>1.1.0</kudu.version>-->
     <openjpa.jdbc.version>2.1.1</openjpa.jdbc.version>
     <mapkeeper.version>1.0</mapkeeper.version>
     <!--
     <mongodb.version>3.0.3</mongodb.version>
     <mongodb.async.version>2.0.1</mongodb.async.version>
-    -->
     <orientdb.version>2.2.10</orientdb.version>
+    -->
     <!--<redis.version>2.0.0</redis.version>-->
     <!--<s3.version>1.10.20</s3.version>-->
     <voldemort.version>0.81</voldemort.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <thrift.version>0.8.0</thrift.version>
     <!--<hypertable.version>0.9.5.6</hypertable.version>-->
+    <!--
     <elasticsearch5-version>5.5.1</elasticsearch5-version>
     <couchbase.version>1.4.10</couchbase.version>
     <couchbase2.version>2.3.1</couchbase2.version>
+    -->
     <tarantool.version>1.6.5</tarantool.version>
     <!--<riak.version>2.0.5</riak.version>-->
     <!--<aerospike.version>3.1.2</aerospike.version>-->
@@ -129,7 +131,7 @@ LICENSE file.
     <arangodb3.version>4.1.7</arangodb3.version>
     <azurestorage.version>4.0.0</azurestorage.version>
     -->
-    <cloudspanner.version>0.24.0-beta</cloudspanner.version>
+    <!--<cloudspanner.version>0.24.0-beta</cloudspanner.version>-->
   </properties>
 
   <modules>
@@ -148,8 +150,9 @@ LICENSE file.
     <module>asynchbase</module>
     <module>azuredocumentdb</module>
     <module>azuretablestorage</module>
-    -->
     <module>cassandra</module>
+    -->
+    <!--
     <module>cloudspanner</module>
     <module>couchbase</module>
     <module>couchbase2</module>
@@ -159,21 +162,22 @@ LICENSE file.
     <module>geode</module>
     <module>googlebigtable</module>
     <module>googledatastore</module>
+    -->
     <!--<module>hbase098</module>
     <module>hbase10</module>
     <module>hbase12</module>
     <module>hypertable</module>
     -->
     <module>infinispan</module>
-    <module>jdbc</module>
-    <module>kudu</module>
+    <!--<module>jdbc</module>-->
+    <!--<module>kudu</module>-->
     <module>mapkeeper</module>
     <module>memcached</module>
     <!--<module>mongodb</module>-->
+    <!--
     <module>nosqldb</module>
     <module>orientdb</module>
     <module>rados</module>
-    <!--
     <module>redis</module>
     <module>rest</module>
     <module>riak</module>
