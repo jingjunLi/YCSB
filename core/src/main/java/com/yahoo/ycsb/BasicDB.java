@@ -22,6 +22,9 @@ import java.util.Map.Entry;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+//import java.util.Random;
+//import java.io.*;
+
 
 /**
  * Basic DB that just prints out the requested operations, instead of doing them against a database.
@@ -32,6 +35,9 @@ public class BasicDB extends DB {
   
   public static final String VERBOSE = "basicdb.verbose";
   public static final String VERBOSE_DEFAULT = "true";
+
+ // public static final String TRACE = "basicdb.trace";
+ // public static final String TRACE_DEFAULT = "false";
 
   public static final String SIMULATE_DELAY = "basicdb.simulatedelay";
   public static final String SIMULATE_DELAY_DEFAULT = "0";
@@ -48,9 +54,11 @@ public class BasicDB extends DB {
   protected static Map<Integer, Integer> deletes;
   
   protected boolean verbose;
+  //protected boolean trace;
   protected boolean randomizedelay;
   protected int todelay;
   protected boolean count;
+  //protected File tracefile;
 
   public BasicDB() {
     todelay = 0;
@@ -83,6 +91,7 @@ public class BasicDB extends DB {
     verbose = Boolean.parseBoolean(getProperties().getProperty(VERBOSE, VERBOSE_DEFAULT));
     todelay = Integer.parseInt(getProperties().getProperty(SIMULATE_DELAY, SIMULATE_DELAY_DEFAULT));
     randomizedelay = Boolean.parseBoolean(getProperties().getProperty(RANDOMIZE_DELAY, RANDOMIZE_DELAY_DEFAULT));
+    //trace = Boolean.parseBoolean(getProperties().getProperty(TRACE, TRACE_DEFAULT));
     count = Boolean.parseBoolean(getProperties().getProperty(COUNT, COUNT_DEFAULT));
     if (verbose) {
       synchronized (System.out) {
@@ -97,6 +106,15 @@ public class BasicDB extends DB {
         System.out.println("**********************************************");
       }
     }
+    //if (trace) {
+    //  int max = 100;
+    //  int min = 0;
+    //  int filename;
+    //  Random random = new Random();
+    //  filename = random.nextInt(max)%(max - min + 1) + min;
+    //  tracefile = new File("/home/li/leveldb_test/write_data/trace_file/" + filename);
+    //  System.out.println("test open file");
+    //}
     
     synchronized (MUTEX) {
       if (counter == 0 && count) {

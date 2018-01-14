@@ -467,7 +467,8 @@ class ClientThread implements Runnable {
           if (!workload.doInsert(db, workloadstate)) {
             break;
           }
-
+          //System.out.println(workloadstate);
+          //System.out.println("ThreadId: " + threadid + " " + opsdone);
           opsdone++;
 
           throttleNanos(startTimeNanos);
@@ -480,6 +481,7 @@ class ClientThread implements Runnable {
     }
 
     try {
+      workload.close(workloadstate);
       measurements.setIntendedStartTimeNs(0);
       db.cleanup();
     } catch (DBException e) {

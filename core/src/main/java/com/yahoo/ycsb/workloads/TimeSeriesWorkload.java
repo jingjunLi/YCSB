@@ -1043,6 +1043,10 @@ public class TimeSeriesWorkload extends Workload {
     cumulativeCardinality[cumulativeCardinality.length - 1] = 1;
   }
   
+  public void close(Object threadstate) {
+
+  } 
+
   /**
    * Makes sure the settings as given are compatible.
    * @throws WorkloadException If one or more settings were invalid.

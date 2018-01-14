@@ -85,4 +85,7 @@ public class ConstantOccupancyWorkload extends CoreWorkload {
     super.init(p);
   }
 
+  public void close(Object threadstate) {
+
+  } 
 }

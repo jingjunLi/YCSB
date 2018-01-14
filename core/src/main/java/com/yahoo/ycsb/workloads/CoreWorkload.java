@@ -24,6 +24,10 @@ import com.yahoo.ycsb.measurements.Measurements;
 
 import java.io.IOException;
 import java.util.*;
+import java.io.BufferedWriter;  
+import java.io.FileWriter;
+import java.io.File;
+import java.util.List;
 
 /**
  * The core benchmark scenario. Represents a set of clients doing simple CRUD operations. The
@@ -74,6 +78,8 @@ public class CoreWorkload extends Workload {
 
   protected String table;
 
+  protected int threadcount;
+
   /**
    * The name of the property for the number of fields in a record.
    */
@@ -116,6 +122,11 @@ public class CoreWorkload extends Workload {
    * used if fieldlengthdistribution is "histogram").
    */
   public static final String FIELD_LENGTH_HISTOGRAM_FILE_PROPERTY = "fieldlengthhistogram";
+
+   /**
+   * The number of YCSB client threads to run.
+   */
+  public static final String THREAD_COUNT_PROPERTY = "threadcount";  
 
   /**
    * The default filename containing a field length histogram.
@@ -307,6 +318,12 @@ public class CoreWorkload extends Workload {
   public static final String INSERTION_RETRY_INTERVAL = "core_workload_insertion_retry_interval";
   public static final String INSERTION_RETRY_INTERVAL_DEFAULT = "3";
 
+  /**
+   * Trace File path.
+   */
+  public static final String YCSB_TRACE_PATH = "ycsb_trace_path";
+  public static final String YCSB_TRACE_PATH_DEFAULT = "/home/li/leveldb_test/write_data/trace_file";
+
   protected NumberGenerator keysequence;
   protected DiscreteGenerator operationchooser;
   protected NumberGenerator keychooser;
@@ -319,6 +336,8 @@ public class CoreWorkload extends Workload {
   protected int zeropadding;
   protected int insertionRetryLimit;
   protected int insertionRetryInterval;
+
+  protected List<BufferedWriter> buffile;
 
   private Measurements measurements = Measurements.getMeasurements();
 
@@ -473,6 +492,28 @@ public class CoreWorkload extends Workload {
         INSERTION_RETRY_LIMIT, INSERTION_RETRY_LIMIT_DEFAULT));
     insertionRetryInterval = Integer.parseInt(p.getProperty(
         INSERTION_RETRY_INTERVAL, INSERTION_RETRY_INTERVAL_DEFAULT));
+    String ycsbpath = p.getProperty(
+        YCSB_TRACE_PATH, YCSB_TRACE_PATH_DEFAULT);
+
+    threadcount = Integer.parseInt(p.getProperty(THREAD_COUNT_PROPERTY, "1"));
+    List<File> files = new ArrayList<File>();
+    List<BufferedWriter> bufs = new ArrayList<BufferedWriter>();
+    File file;
+    BufferedWriter buf;
+    for (int i = 0; i < threadcount; i++) {
+      file = new File(ycsbpath + "/ycsb_" + i + ".trace");
+      try {
+        if (!file.exists()) {
+          file.createNewFile();
+        }
+        files.add(file);
+        buf = new BufferedWriter(new FileWriter(file)); 
+        bufs.add(buf);
+      } catch (IOException e) {
+        System.exit(-1);
+      }
+    }
+    buffile = bufs;
   }
 
   protected String buildKeyName(long keynum) {
@@ -566,6 +607,11 @@ public class CoreWorkload extends Workload {
     do {
       status = db.insert(table, dbkey, values);
       if (null != status && status.isOk()) {
+        try {
+          buffile.get(Integer.parseInt(threadstate.toString())).write("i " + dbkey + "\r\n");
+        } catch (IOException e) {
+          System.exit(-1);
+        }
         break;
       }
       // Retry if configured. Without retrying, the load process will fail
@@ -607,19 +653,19 @@ public class CoreWorkload extends Workload {
 
     switch (operation) {
     case "READ":
-      doTransactionRead(db);
+      doTransactionRead(db, threadstate);
       break;
     case "UPDATE":
-      doTransactionUpdate(db);
+      doTransactionUpdate(db, threadstate);
       break;
     case "INSERT":
-      doTransactionInsert(db);
+      doTransactionInsert(db, threadstate);
       break;
     case "SCAN":
-      doTransactionScan(db);
+      doTransactionScan(db, threadstate);
       break;
     default:
-      doTransactionReadModifyWrite(db);
+      doTransactionReadModifyWrite(db, threadstate);
     }
 
     return true;
@@ -665,7 +711,7 @@ public class CoreWorkload extends Workload {
     return keynum;
   }
 
-  public void doTransactionRead(DB db) {
+  public void doTransactionRead(DB db, Object threadstate) {
     // choose a random key
     long keynum = nextKeynum();
 
@@ -687,12 +733,17 @@ public class CoreWorkload extends Workload {
     HashMap<String, ByteIterator> cells = new HashMap<String, ByteIterator>();
     db.read(table, keyname, fields, cells);
 
+    try {
+      buffile.get(Integer.parseInt(threadstate.toString())).write("r " + keyname + "\r\n");
+    } catch (IOException e) {
+      System.exit(-1);
+    }
     if (dataintegrity) {
       verifyRow(keyname, cells);
     }
   }
 
-  public void doTransactionReadModifyWrite(DB db) {
+  public void doTransactionReadModifyWrite(DB db, Object threadstate) {
     // choose a random key
     long keynum = nextKeynum();
 
@@ -728,6 +779,12 @@ public class CoreWorkload extends Workload {
     db.read(table, keyname, fields, cells);
 
     db.update(table, keyname, values);
+    try {
+      buffile.get(Integer.parseInt(threadstate.toString())).write("r " + keyname + "\r\n");
+      buffile.get(Integer.parseInt(threadstate.toString())).write("u " + keyname + "\r\n");
+    } catch (IOException e) {
+      System.exit(-1);
+    }
 
     long en = System.nanoTime();
 
@@ -739,7 +796,7 @@ public class CoreWorkload extends Workload {
     measurements.measureIntended("READ-MODIFY-WRITE", (int) ((en - ist) / 1000));
   }
 
-  public void doTransactionScan(DB db) {
+  public void doTransactionScan(DB db, Object threadstate) {
     // choose a random key
     long keynum = nextKeynum();
 
@@ -759,9 +816,14 @@ public class CoreWorkload extends Workload {
     }
 
     db.scan(table, startkeyname, len, fields, new Vector<HashMap<String, ByteIterator>>());
+    try {
+      buffile.get(Integer.parseInt(threadstate.toString())).write("s " + startkeyname + " " + len + "\r\n");
+    } catch (IOException e) {
+      System.exit(-1);
+    }
   }
 
-  public void doTransactionUpdate(DB db) {
+  public void doTransactionUpdate(DB db, Object threadstate) {
     // choose a random key
     long keynum = nextKeynum();
 
@@ -778,9 +840,14 @@ public class CoreWorkload extends Workload {
     }
 
     db.update(table, keyname, values);
+    try {
+      buffile.get(Integer.parseInt(threadstate.toString())).write("u " + keyname + "\r\n");
+    } catch (IOException e) {
+      System.exit(-1);
+    }
   }
 
-  public void doTransactionInsert(DB db) {
+  public void doTransactionInsert(DB db, Object threadstate) {
     // choose the next key
     long keynum = transactioninsertkeysequence.nextValue();
 
@@ -789,6 +856,11 @@ public class CoreWorkload extends Workload {
 
       HashMap<String, ByteIterator> values = buildValues(dbkey);
       db.insert(table, dbkey, values);
+      try {
+        buffile.get(Integer.parseInt(threadstate.toString())).write("i " + dbkey + "\r\n");
+      } catch (IOException e) {
+        System.exit(-1);
+      }
     } finally {
       transactioninsertkeysequence.acknowledge(keynum);
     }
@@ -841,4 +913,14 @@ public class CoreWorkload extends Workload {
     }
     return operationchooser;
   }
+
+  public void close(Object threadstate) {
+    try {
+      buffile.get(Integer.parseInt(threadstate.toString())).flush();
+      buffile.get(Integer.parseInt(threadstate.toString())).close();
+    } catch (IOException e) {
+      System.exit(-1);
+    }
+  } 
 }
+
